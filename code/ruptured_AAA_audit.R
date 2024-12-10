@@ -42,10 +42,12 @@ date_end <- dmy("31052022")
 icd_codes <- c("I713", "I714", "I715", "I716", "I718", "I719")
 
 ## Pathways
-wd <- paste0("/PHI_conf/AAA/Topics/Projects/20210929-Ruptured-AAAs-Audit")
+wd_path <- paste0("/PHI_conf/AAA/Topics/Projects/20210929-Ruptured-AAAs-Audit")
 
 simd_path <- paste0("/conf/linkage/output/lookups/Unicode/Deprivation",
                     "/postcode_2023_1_simd2020v2.rds")
+
+template <- paste0(wd_path, "/Ruptured_AAA_audit_template_YYYY.xlsx")
 
 ## SIMD data
 simd <- readRDS(simd_path) |> 
@@ -56,36 +58,36 @@ write_report <- function(df1, df2, hb_name) {
   
   ### Setup workbook ----
   ## Reset variable names
-  records_extract <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
-                       "Date of Birth", "Age", "Sex", "Date of Admission", 
-                       "Date Discharge", "Condition Index", "Main Condition", 
-                       "Other Condition 1", "Other Condition 2", "Other Condition 3",
-                       "Other Condition 4", "Other Condition 5")
-  records_deaths <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
-                      "Date of Birth", "Age", "Sex", "Date of Death", "Cause Index",
-                      "Underlying Cause of Death", "Cause of Death 0", 
-                      "Cause of Death 1", "Cause of Death 2", "Cause of Death 3",
-                      "Cause of Death 4", "Cause of Death 5", "Cause of Death 6",
-                      "Cause of Death 7", "Cause of Death 8", "Cause of Death 9")
+  # records_extract <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
+  #                      "Date of Birth", "Age", "Sex", "Date of Admission", 
+  #                      "Date Discharge", "Condition Index", "Main Condition", 
+  #                      "Other Condition 1", "Other Condition 2", "Other Condition 3",
+  #                      "Other Condition 4", "Other Condition 5")
+  # records_deaths <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
+  #                     "Date of Birth", "Age", "Sex", "Date of Death", "Cause Index",
+  #                     "Underlying Cause of Death", "Cause of Death 0", 
+  #                     "Cause of Death 1", "Cause of Death 2", "Cause of Death 3",
+  #                     "Cause of Death 4", "Cause of Death 5", "Cause of Death 6",
+  #                     "Cause of Death 7", "Cause of Death 8", "Cause of Death 9")
   
   ## Styles
   title_style <- createStyle(fontSize = 14, halign = "Left", textDecoration = "bold")
   table_style <- createStyle(valign = "Bottom", halign = "Left",
                              border = "TopBottomLeftRight")
-  wrap_style <- createStyle(wrapText = TRUE)
+  #wrap_style <- createStyle(wrapText = TRUE)
   
   ## Titles
   title <- paste0("Ruptured Anuerysm Audit for ", hb_name)
   date_range <- paste0("Hospital admissions and deaths between ", date_start,
                        " and ", date_end)
-  source <- paste0("Data for hospital admissions has been produced from the ",
-                   "national inpatients dataset held by PHS (known as SMR01). ",
-                   "Data containing information on deaths has been produced from ",
-                   "the National Records of Scotland (NRS) death records.")
-  source2 <- paste0("SMR01 and NRS datasets were searched for any males, of ", 
-                    "age 65 and older, who have presented with a ruptured ",
-                    "aneurysm (ICD10 codes I71.3, I71.4, I71.5, I71.6, ",
-                    "I71.8, and I71.9).")
+  # source <- paste0("Data for hospital admissions has been produced from the ",
+  #                  "national inpatients dataset held by PHS (known as SMR01). ",
+  #                  "Data containing information on deaths has been produced from ",
+  #                  "the National Records of Scotland (NRS) death records.")
+  # source2 <- paste0("SMR01 and NRS datasets were searched for any males, of ", 
+  #                   "age 65 and older, who have presented with a ruptured ",
+  #                   "aneurysm (ICD10 codes I71.3, I71.4, I71.5, I71.6, ",
+  #                   "I71.8, and I71.9).")
   today <- paste0("Workbook created ", Sys.Date())
   
   ## Data
@@ -98,30 +100,31 @@ write_report <- function(df1, df2, hb_name) {
   
   
   ## Setup workbook
-  wb <- createWorkbook()
+  # wb <- createWorkbook()
+  wb <- loadWorkbook(template)
   options("openxlsx.borderStyle" = "thin",
           "openxlsx.dateFormat" = "dd/mm/yyyy")
   modifyBaseFont(wb, fontSize = 12, fontName = "Arial")
   
   
   ### Notes ----
-  addWorksheet(wb, sheetName = "Notes", gridLines = FALSE)
+  #addWorksheet(wb, sheetName = "Notes", gridLines = FALSE)
   writeData(wb, "Notes", title, startRow = 1, startCol = 1)
   writeData(wb, "Notes", date_range, startRow = 2, startCol = 1)
-  writeData(wb, "Notes", source, startRow = 4, startCol = 1)
-  writeData(wb, "Notes", source2, startRow = 5, startCol = 1)
+  # writeData(wb, "Notes", source, startRow = 4, startCol = 1)
+  # writeData(wb, "Notes", source2, startRow = 5, startCol = 1)
   writeData(wb, "Notes", today, startRow = 7, startCol = 1)
   
   setColWidths(wb, "Notes", cols = 1, widths = "97.00")
   #setRowHeights(wb, "Notes", rows = 4:5, height = 30)
-  addStyle(wb, "Notes", wrap_style, rows = 4:5, cols = 1, gridExpand = TRUE)
   addStyle(wb, "Notes", title_style, rows = 1, cols = 1)
+  # addStyle(wb, "Notes", wrap_style, rows = 4:5, cols = 1, gridExpand = TRUE)
   
   
   ### Inpatient Admissions ----
-  names(data1) <- records_extract
-  addWorksheet(wb, sheetName = "Inpatient Admissions", gridLines = FALSE)
-  writeDataTable(wb, "Inpatient Admissions", data1, startRow = 3)
+  # names(data1) <- records_extract
+  # addWorksheet(wb, sheetName = "Inpatient Admissions", gridLines = FALSE)
+  writeData(wb, "Inpatient Admissions", data1, startRow = 4, colNames = FALSE)
   
   # titles
   title_extract <- paste0("Inpatient admissions between ", date_start, 
@@ -133,16 +136,16 @@ write_report <- function(df1, df2, hb_name) {
   addStyle(wb, "Inpatient Admissions", title_style, rows = 3, cols = 1:ncol(data1))
 
   # tables
-  addStyle(wb, "Inpatient Admissions", table_style, rows = 3:(3+nrow(data1)), 
+  addStyle(wb, "Inpatient Admissions", table_style, rows = 4:(4+nrow(data1)), 
            cols = 1:ncol(data1), gridExpand = TRUE, stack = TRUE)
   setColWidths(wb, "Inpatient Admissions", cols = 1:ncol(data1), 
                widths = "auto")
   
   
   ### Deaths ----
-  names(data2) <- records_deaths
-  addWorksheet(wb, sheetName = "Deaths", gridLines = FALSE)
-  writeDataTable(wb, "Deaths", data2, startRow = 3)
+  # names(data2) <- records_deaths
+  # addWorksheet(wb, sheetName = "Deaths", gridLines = FALSE)
+  writeData(wb, "Deaths", data2, startRow = 4, colNames = FALSE)
 
   # titles
   title_deaths <- paste0("Deaths between", date_start, " and ", date_end)
@@ -153,13 +156,13 @@ write_report <- function(df1, df2, hb_name) {
   addStyle(wb, "Deaths", title_style, rows = 3, cols = 1:ncol(data2))
 
   # tables
-  addStyle(wb, "Deaths", table_style, rows = 3:(3+nrow(data2)), 
+  addStyle(wb, "Deaths", table_style, rows = 4:(4+nrow(data2)), 
            cols = 1:ncol(data2), gridExpand = TRUE, stack = TRUE)
   setColWidths(wb, "Deaths", cols = 1:ncol(data2), widths = "auto")
   
   
   ### Save ----
-  saveWorkbook(wb, paste0(wd, "/Output/Ruptured_AAA_audit_", hb_name, "_",
+  saveWorkbook(wb, paste0(wd_path, "/Output/Ruptured_AAA_audit_", hb_name, "_",
                           Sys.Date(), ".xlsx"), overwrite = TRUE)
 }
 
@@ -187,13 +190,13 @@ write_report <- function(df1, df2, hb_name) {
 # extract_01 <- collect(smr01_query)
 # 
 # ## Add in an output for the extract so don't have to connect to SMRA every time
-# saveRDS(extract_01, paste0(wd, "/Temp/SMR01_extract.rds"))
+# saveRDS(extract_01, paste0(wd_path, "/Temp/SMR01_extract.rds"))
 # 
 # rm(smr01_query)
 
 
 ## B: Refine extract ----
-extract_01 <- readRDS(paste0(wd, "/Temp/SMR01_extract.rds")) |> 
+extract_01 <- readRDS(paste0(wd_path, "/Temp/SMR01_extract.rds")) |> 
   select(-DERIVED_CHI, -AGE_IN_MONTHS, -ADMISSION, -DISCHARGE)
 names(extract_01)
 
@@ -270,6 +273,19 @@ extract_01 <- extract_01 |>
          .after = date_discharge) |> 
   arrange(condition, date_admission)
 
+## Add in response rows
+extract_01 <- extract_01 |> 
+  mutate(should_on_list = NA,
+         why_on_list = NA,
+         in_aaa_program = NA,
+         review_needed = NA,
+         notes = NA) |> 
+  # prep date for writing out to Excel
+  mutate(dob = as.character(dob),
+         date_admission = as.character(date_admission),
+         date_discharge = as.character(date_discharge)) |> 
+  glimpse()
+
 
 ## C: SIMD ----
 # Ensure correct postcode format is used 
@@ -344,13 +360,13 @@ rm(extract_01)
 # deaths <- collect(deaths_query)
 # 
 # ## Add in an output for the extract so don't have to connect to SMRA every time
-# saveRDS(deaths, paste0(wd, "/Temp/deaths_extract.rds"))
+# saveRDS(deaths, paste0(wd_path, "/Temp/deaths_extract.rds"))
 # 
 # rm(SMRA_connection, deaths_query)
 
 
 ## B: Refine extract ----
-deaths <- readRDS(paste0(wd, "/Temp/deaths_extract.rds")) |> 
+deaths <- readRDS(paste0(wd_path, "/Temp/deaths_extract.rds")) |> 
   select(-CHI)
 names(deaths)
 
@@ -454,6 +470,18 @@ deaths <- deaths |>
                                    cause_death_9 %in% icd_codes ~ "cause 9")) |> 
   arrange(cause_fatal, date_death)
 
+## Add in response rows
+deaths <- deaths |> 
+  mutate(should_on_list = NA,
+         why_on_list = NA,
+         in_aaa_program = NA,
+         review_needed = NA,
+         notes = NA) |> 
+  # prep date for writing out to Excel
+  mutate(dob = as.character(dob),
+         date_death = as.character(date_death)) |> 
+  glimpse()
+
 
 ## C: SIMD ----
 # Ensure correct postcode format is used 
@@ -487,7 +515,7 @@ length(unique(deaths_simd$upi))
 rm(deaths, cause_variables, names, simd_path)
 
 
-### 5: Output to Excel ----
+### 4: Output to Excel ----
 hb_names <- extract_simd |> 
   distinct(hb2019name) |> 
   pull()
