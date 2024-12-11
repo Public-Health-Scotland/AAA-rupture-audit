@@ -40,6 +40,7 @@ library(dplyr)
 library(lubridate)
 library(stringr)
 library(phsmethods)
+library(forcats)
 library(openxlsx)
 library(tidylog)
 
@@ -71,6 +72,7 @@ template <- paste0(wd_path, "/Ruptured_AAA_audit_template_YYYY.xlsx")
 ## SIMD data
 simd <- readRDS(simd_path) |> 
   select(pc8, hb2019name)
+
 
 ## Function
 write_report <- function(df1, df2, hb_name) {
@@ -201,46 +203,45 @@ SMRA_connection <- odbc::dbConnect(
 )
 
 smr01_query <- tbl(SMRA_connection, "SMR01_PI") %>%
-  #names()
-  select(UPI_NUMBER, DERIVED_CHI, SURNAME, FIRST_FORENAME, POSTCODE, DOB, AGE_IN_YEARS,
-         AGE_IN_MONTHS, SEX, ADMISSION_DATE, DISCHARGE_DATE, MAIN_CONDITION,
-         OTHER_CONDITION_1, OTHER_CONDITION_2, OTHER_CONDITION_3, OTHER_CONDITION_4,
-         OTHER_CONDITION_5, ADMISSION, DISCHARGE) %>%
-  filter(ADMISSION_DATE >= To_date('2022-01-01', 'YYYY-MM-DD'))
-
-#smr01_query %>% show_query()
-
-extract_01 <- collect(smr01_query)
-
-## Add in an output for the extract so don't have to connect to SMRA every time
-saveRDS(extract_01, paste0(wd_path, "/Temp/SMR01_extract.rds"))
-
-rm(smr01_query)
+  colnames()
+#   select(UPI_NUMBER, DERIVED_CHI, SURNAME, FIRST_FORENAME, POSTCODE, DOB, AGE_IN_YEARS,
+#          AGE_IN_MONTHS, SEX, ADMISSION_DATE, DISCHARGE_DATE, MAIN_CONDITION,
+#          OTHER_CONDITION_1, OTHER_CONDITION_2, OTHER_CONDITION_3, OTHER_CONDITION_4,
+#          OTHER_CONDITION_5, ADMISSION, DISCHARGE) %>%
+#   filter(ADMISSION_DATE >= To_date('2022-01-01', 'YYYY-MM-DD'))
+# 
+#
+# #smr01_query %>% show_query()
+# 
+# inpatient <- collect(smr01_query)
+# 
+# ## Add in an output for the extract so don't have to connect to SMRA every time
+# saveRDS(inpatient, paste0(wd_path, "/Temp/SMR01_extract.rds"))
+# 
+# rm(smr01_query)
 
 
 ## B: Refine extract ----
-extract_01 <- readRDS(paste0(wd_path, "/Temp/SMR01_extract.rds")) |> 
+inpatient <- readRDS(paste0(wd_path, "/Temp/SMR01_extract.rds")) |> 
   select(-DERIVED_CHI, -AGE_IN_MONTHS, -ADMISSION, -DISCHARGE,
-        -OTHER_CONDITION_4, -OTHER_CONDITION_5)
-names(extract_01)
+         -OTHER_CONDITION_4, -OTHER_CONDITION_5)
+names(inpatient)
 
 # Rename variables
 names <- c("upi", "surname", "forename", "postcode", "dob", 
            "age", "sex", "date_admission", "date_discharge",
            "main_condition", "other_condition_1", "other_condition_2", 
            "other_condition_3")
-names(extract_01) <- names
+names(inpatient) <- names
 
 # sex = male
 # age = 65+
 # ICD10 codes = icd_rupture_codes
 # date_admission w/in dates _start & _end
-
-
-## Include other_condition_ 1-3
-extract_01 <- extract_01 |> 
-  filter(age >= 65,
-         sex == "1",
+# Include other_condition_ 1-3
+inpatient <- inpatient |> 
+  filter(sex == "1",
+         age >= 65,
          between(date_admission, date_start, date_end)) |> 
   filter(main_condition %in% icd_rupture_codes |
            other_condition_1 %in% icd_rupture_codes |
@@ -250,16 +251,15 @@ extract_01 <- extract_01 |>
          forename = str_to_title(forename)) |> 
   glimpse()
 
-table(extract_01$main_condition)
-table(extract_01$other_condition_1)
-table(extract_01$other_condition_2)
-table(extract_01$other_condition_3)
-table(extract_01$date_admission)
+table(inpatient$main_condition)
+table(inpatient$other_condition_1)
+table(inpatient$other_condition_2)
+table(inpatient$other_condition_3)
+range(inpatient$date_admission)
 
 
 ## Add column that identifies if condition is main or other
-# This is pretty messy, so happy for it to be done more efficiently if possible?
-extract_01 <- extract_01 |> 
+inpatient <- inpatient |> 
   mutate(condition = 
            case_when(main_condition %in% icd_codes ~ "main",
                      !(main_condition %in% icd_codes) & 
@@ -272,68 +272,106 @@ extract_01 <- extract_01 |>
                        !(other_condition_2 %in% icd_codes) &
                        other_condition_3 %in% icd_codes ~ "other 3"),
          .after = date_discharge) |> 
-  arrange(condition, date_admission)
+  arrange(desc(condition), date_admission)
 
-records_extract <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
-                     "Date of Birth", "Age", "Sex", "Date of Admission",
-                     "Date Discharge", "Condition Index", "Main Condition",
-                     "Other Condition 1", "Other Condition 2", "Other Condition 3",
-                     "Should be on List", "Reason Why", "In AAA Programme",
-                     "Case Needs to be Reviewed", "Notes")
+table(inpatient$condition)
 
 
 ## Add in response rows
-extract_01 <- extract_01 |> 
+inpatient <- inpatient |> 
   mutate(should_on_list = NA,
          why_on_list = NA,
-         in_aaa_program = NA,
          review_needed = NA,
          notes = NA) |> 
-  # prep date for writing out to Excel
-  mutate(dob = as.character(dob),
-         date_admission = as.character(date_admission),
-         date_discharge = as.character(date_discharge)) |> 
   glimpse()
 
 
 ## C: SIMD ----
 # Ensure correct postcode format is used 
-extract_01 <- extract_01 |> 
+inpatient <- inpatient |> 
   mutate(postcode = format_postcode(postcode, "pc8"))
 
 # Check for NAs
-sum(is.na(extract_01$postcode))
+sum(is.na(inpatient$postcode))
 
 # Combine
-extract_simd <- left_join(extract_01, simd, 
+inpatient_simd <- left_join(inpatient, simd, 
                           by = c("postcode" = "pc8")) |> 
   select(hb2019name, upi:notes) |> 
   arrange(hb2019name, upi, date_admission)
 
-names(extract_simd)
+names(inpatient_simd)
 
 # Check for NAs
-table(extract_simd$hb2019name, useNA = "ifany") # 8 NAs
-check <- extract_simd[is.na(extract_simd$hb2019name),]
-table(check$postcode, useNA = "ifany") # 8 postcodes in England/Wales
+table(inpatient_simd$hb2019name, useNA = "ifany") # 8 NAs
+check <- inpatient_simd[is.na(inpatient_simd$hb2019name),]
+table(check$postcode, useNA = "ifany") # 2 postcodes in England/Wales
 rm(check)
 
-extract_simd <- extract_simd |> 
-  filter(!is.na(hb2019name)) |> 
-  glimpse()
-table(extract_simd$hb2019name, useNA = "ifany")
 
 # Keep only last entry for each UPI
-length(unique(extract_simd$upi))
+length(unique(inpatient_simd$upi))
 
 # number of observations should match above
-extract_simd <- extract_simd |> 
+inpatient_simd <- inpatient_simd |> 
+  arrange(desc(condition), date_admission) |> # arrange records such that conditions run low to high
   group_by(upi) |> 
-  slice(n()) |> # this takes last record, but would be better to take last main condition
+  slice(n()) |> # remaining record is one with highest condition level (i.e. main, etc.)
   ungroup() |> 
   glimpse()
 
-rm(extract_01)
+
+## D: Surgical data ----
+# Pull in complete extract to identify individuals who died within 30 days of surgery 
+aaa_extract <- readRDS(extract_path) |> 
+  select(financial_year, upi, dob, hbres, date_surgery, 
+         hb_surgery, date_death, aneurysm_related) |> 
+  mutate(in_aaa_program = "Yes") |> 
+  # mutate(year = year(date_death)) |> 
+  filter(financial_year %in% c("2021/22", "2022/23"))
+
+table(aaa_extract$financial_year, useNA = "ifany")
+table(aaa_extract$date_surgery, useNA = "ifany")
+table(aaa_extract$date_death, useNA = "ifany")
+
+
+# Check if individuals had surgery or death (death needs to be >30 surgery)
+# Also check that dob and HB match
+inpatient_matched <- left_join(inpatient_simd, aaa_extract,
+                               by = "upi") |> 
+  select(financial_year, hb2019name, hbres, upi, dob.x, dob.y,
+         date_admission, date_surgery, date_death, aneurysm_related, 
+         surname:postcode, age, sex, in_aaa_program, date_discharge:notes) |> 
+  mutate(days_to_death = day(as.period(interval(start = date_surgery, 
+                                                end = date_death))), .after = date_death) |>
+  filter(days_to_death >= 30 | is.na(days_to_death))
+
+test <- inpatient_matched |> 
+  arrange(desc(condition), date_admission) |> 
+  group_by(upi) |> 
+  slice(n()) |> 
+  ungroup() 
+
+test <- arrange(test, hb2019name, upi)
+
+# Select final columns for outputting to Excel
+test <- test |> 
+  mutate(hb2019name = if_else(!is.na(hb2019name), hb2019name, paste0("NHS ", hbres)),
+         dob.x = if_else(!is.na(dob.x), dob.x, dob.y)) |> 
+  select(hb2019name, upi, surname:postcode, dob.x, age:in_aaa_program, date_admission, 
+         date_discharge:other_condition_3, date_surgery:aneurysm_related,
+         should_on_list:notes) |> 
+  arrange(hb2019name, upi) |> 
+# prep dates for writing out to Excel
+  mutate(dob.x = as.character(dob.x),
+         date_admission = as.character(date_admission),
+         date_discharge = as.character(date_discharge),
+         date_surgery = as.character(date_surgery),
+         date_death = as.character(date_death))
+  
+table(inpatient_matched$hb2019name, useNA = "ifany")
+
+rm(inpatient, inpatient_simd)
 
 
 ### 3: Deaths extract ----
@@ -346,32 +384,32 @@ rm(extract_01)
 #   pwd = rstudioapi::askForPassword("SMRA Password:")
 # )
 
-deaths_query <- tbl(SMRA_connection,
-    dbplyr::in_schema("ANALYSIS", "GRO_DEATHS_C")) %>%
-  #names()
-  select(UPI_NUMBER, CHI, DECEASED_SURNAME, DECEASED_FORENAME, POSTCODE,
-         DATE_OF_BIRTH, AGE, SEX, DATE_OF_DEATH, UNDERLYING_CAUSE_OF_DEATH,
-         CAUSE_OF_DEATH_CODE_0, CAUSE_OF_DEATH_CODE_1, CAUSE_OF_DEATH_CODE_2,
-         CAUSE_OF_DEATH_CODE_3, CAUSE_OF_DEATH_CODE_4, CAUSE_OF_DEATH_CODE_5,
-         CAUSE_OF_DEATH_CODE_6, CAUSE_OF_DEATH_CODE_7, CAUSE_OF_DEATH_CODE_8,
-         CAUSE_OF_DEATH_CODE_9) %>%
-  filter(DATE_OF_DEATH >= To_date("2022-01-01", "YYYY-MM-DD"))
-
-# Use colnames to check variable names
-colnames(tbl(
-  SMRA_connection,
-  dbplyr::in_schema("ANALYSIS", "GRO_DEATHS_C")
-))
-
-# See what the SQL looks like
-deaths_query %>% show_query()
-
-deaths <- collect(deaths_query)
-
-## Add in an output for the extract so don't have to connect to SMRA every time
-saveRDS(deaths, paste0(wd_path, "/Temp/deaths_extract.rds"))
-
-rm(SMRA_connection, deaths_query)
+# deaths_query <- tbl(SMRA_connection,
+#     dbplyr::in_schema("ANALYSIS", "GRO_DEATHS_C")) %>%
+#   #names()
+#   select(UPI_NUMBER, CHI, DECEASED_SURNAME, DECEASED_FORENAME, POSTCODE,
+#          DATE_OF_BIRTH, AGE, SEX, DATE_OF_DEATH, UNDERLYING_CAUSE_OF_DEATH,
+#          CAUSE_OF_DEATH_CODE_0, CAUSE_OF_DEATH_CODE_1, CAUSE_OF_DEATH_CODE_2,
+#          CAUSE_OF_DEATH_CODE_3, CAUSE_OF_DEATH_CODE_4, CAUSE_OF_DEATH_CODE_5,
+#          CAUSE_OF_DEATH_CODE_6, CAUSE_OF_DEATH_CODE_7, CAUSE_OF_DEATH_CODE_8,
+#          CAUSE_OF_DEATH_CODE_9) %>%
+#   filter(DATE_OF_DEATH >= To_date("2022-01-01", "YYYY-MM-DD"))
+# 
+# # Use colnames to check variable names
+# colnames(tbl(
+#   SMRA_connection,
+#   dbplyr::in_schema("ANALYSIS", "GRO_DEATHS_C")
+# ))
+# 
+# # See what the SQL looks like
+# deaths_query %>% show_query()
+# 
+# deaths <- collect(deaths_query)
+# 
+# ## Add in an output for the extract so don't have to connect to SMRA every time
+# saveRDS(deaths, paste0(wd_path, "/Temp/deaths_extract.rds"))
+# 
+# rm(SMRA_connection, deaths_query)
 
 
 ## B: Refine extract ----
@@ -395,9 +433,9 @@ names(deaths) <- names
 deaths <- deaths |> 
   mutate(age_at_2012 = year(as.period(interval(start = dob, 
                                                end = dmy(01012012))))) |> 
-  filter(age_at_2012 <= 65,
+  filter(sex == "1",
+         age_at_2012 <= 65,
          age >= 65,
-         sex == "1",
          between(date_death, date_start, date_end)) |> 
   filter(underlying_cause_death %in% icd_codes |
            cause_death_0 %in% icd_codes |
@@ -484,21 +522,20 @@ deaths <- deaths |>
                                    !(cause_death_7 %in% icd_codes) &
                                    !(cause_death_8 %in% icd_codes) &
                                    cause_death_9 %in% icd_codes ~ "cause 9")) |> 
+  mutate(cause_fatal = fct_relevel(cause_fatal, "underlying")) |> 
   arrange(cause_fatal, date_death)
+
+table(deaths$cause_fatal, useNA = "ifany")
+
 
 ## Add in response rows
 deaths <- deaths |> 
-  mutate(in_aaa_program = NA,
-         surgery_type = NA,
-         #death_30_days = NA,
+  mutate(surgery_type = NA,
          should_be_on_list = NA,
          why_not_list = NA,
          review_needed = NA,
          report_QPMG = NA,
          notes = NA) |> 
-  # prep date for writing out to Excel
-  mutate(dob = as.character(dob),
-         date_death = as.character(date_death)) |> 
   glimpse()
 
 
@@ -513,7 +550,7 @@ sum(is.na(deaths$postcode))
 # Combine
 deaths_simd <- left_join(deaths, simd, 
                          by = c("postcode" = "pc8")) |> 
-  select(hb2019name, upi:sex, in_aaa_program, surgery_type, 
+  select(hb2019name, upi:sex, surgery_type, 
          date_death:cause_death_9, should_be_on_list:notes) |> 
   arrange(hb2019name, upi, date_death)
 
@@ -522,24 +559,19 @@ names(deaths_simd)
 # Check for NAs
 table(deaths_simd$hb2019name, useNA = "ifany") 
 
-# deaths_simd <- deaths_simd |> 
-#   filter(!is.na(hb2019name)) |> 
-#   glimpse()
-# table(deaths_simd$hb2019name, useNA = "ifany")
-
 # Check no duplicate UPIs
 length(unique(deaths_simd$upi)) 
 # ideally, this should match number of observations; if not, investigate.
 
-
 rm(deaths, cause_variables, names, simd_path)
 
 
-## C: Surgical data ----
+## D: Surgical data ----
 # Pull in complete extract to identify individuals who died within 30 days of surgery 
 aaa_extract <- readRDS(extract_path) |> 
   select(financial_year, upi, dob, hbres, date_surgery, 
          hb_surgery, date_death, aneurysm_related) |> 
+  mutate(in_aaa_program = "Yes") |> 
   mutate(year = year(date_death)) |> 
   filter(year == 2022)
 
@@ -549,15 +581,35 @@ table(aaa_extract$date_death, useNA = "ifany")
 table(aaa_extract$year, useNA = "ifany")
 
 
-deaths_matched <-  left_join(deaths_simd, aaa_extract,
-                   by = "upi")# |> 
-  select(financial_year, year, upi, dob.x, dob.y, hb2019name, hbres,
-         date_surgery, date_death.x, date_death.y, aneurysm_related)
+## Check if individuals had surgery or death (death needs to be >30 days after surgery)
+# Also check that dob, date of death, and HB match
+deaths_matched <- full_join(deaths_simd, aaa_extract,
+                            by = "upi") |> 
+  select(financial_year, year, hb2019name, hbres, upi, dob.x, dob.y, 
+         date_surgery, date_death.x, date_death.y, aneurysm_related,
+         surname:postcode, age, sex, in_aaa_program,
+         surgery_type, cause_fatal:notes) 
 
+# Create age at death variable
+# Select final columns for outputting to Excel
+deaths_matched <- deaths_matched |> 
+  mutate(hb2019name = if_else(!is.na(hb2019name), hb2019name, paste0("NHS ", hbres)),
+         dob.x = if_else(!is.na(dob.x), dob.x, dob.y),
+         date_death.x = if_else(!is.na(date_death.x), date_death.x, date_death.y)) |> 
+  select(hb2019name, upi, surname:postcode, dob.x, age, sex:surgery_type,
+         date_surgery, date_death.x, cause_fatal:notes) |> 
+  mutate(days_to_death = day(as.period(interval(start = date_surgery, 
+                                              end = date_death.x))), .after = date_death.x) |>
+  filter(days_to_death < 30 | is.na(days_to_death)) |> 
+  arrange(hb2019name, cause_fatal, upi) |> 
+  # prep dates for writing out to Excel
+  mutate(dob.x = as.character(dob.x),
+         date_surgery = as.character(date_surgery),
+         date_death.x = as.character(date_death.x))
 
+table(deaths_matched$hb2019name, useNA = "ifany")
 
-
-
+rm(deaths_simd)
 
 
 # ### 4: Output to Excel ----
