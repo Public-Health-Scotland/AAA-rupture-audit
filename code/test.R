@@ -78,23 +78,7 @@ simd <- readRDS(simd_path) |>
 write_report <- function(df1, df2, hb_name) {
   
   ### Setup workbook ----
-  ## Reset variable names
-  # records_extract <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
-  #                      "Date of Birth", "Age", "Sex", "Date of Admission", 
-  #                      "Date Discharge", "Condition Index", "Main Condition", 
-  #                      "Other Condition 1", "Other Condition 2", "Other Condition 3",
-  #                      "Should be on List", "Reason Why", "In AAA Programme", 
-  #                      "Case Needs to be Reviewed", "Notes")
-  # records_deaths <- c("Health Board", "UPI", "Surname", "Forename", "Postcode",
-  #                     "Date of Birth", "Age", "Sex", "In AAA Programme", 
-  #                     "Date of Death", "Cause Index",
-  #                     "Underlying Cause of Death", "Cause of Death 0", 
-  #                     "Cause of Death 1", "Cause of Death 2", "Cause of Death 3",
-  #                     "Cause of Death 4", "Cause of Death 5", "Cause of Death 6",
-  #                     "Cause of Death 7", "Cause of Death 8", "Cause of Death 9",
-  #                     "Should be on List", "Reason Why Not", "Case Needs to be Reviewed",
-  #                     "Report to QPMG", "Notes")
-  
+
   ## Styles
   title_style <- createStyle(fontSize = 14, halign = "Left", textDecoration = "bold")
   table_style <- createStyle(valign = "Bottom", halign = "Left",
@@ -149,7 +133,7 @@ write_report <- function(df1, df2, hb_name) {
   ### Inpatient Admissions ----
   # names(data1) <- records_extract
   # addWorksheet(wb, sheetName = "Inpatient Admissions", gridLines = FALSE)
-  writeData(wb, "Inpatient Admissions", data1, startRow = 4, colNames = FALSE)
+  writeData(wb, "Inpatient Admissions", data1, startRow = 2, colNames = FALSE)
   
   # # titles
   # title_extract <- paste0("Inpatient admissions between ", date_start, 
@@ -170,7 +154,7 @@ write_report <- function(df1, df2, hb_name) {
   ### Deaths ----
   # names(data2) <- records_deaths
   # addWorksheet(wb, sheetName = "Deaths", gridLines = FALSE)
-  writeData(wb, "Deaths", data2, startRow = 4, colNames = FALSE)
+  writeData(wb, "Deaths", data2, startRow = 2, colNames = FALSE)
   
   # # titles
   # title_deaths <- paste0("Deaths between", date_start, " and ", date_end)
@@ -235,12 +219,15 @@ names <- c("upi", "surname", "forename", "postcode", "dob",
 names(inpatient) <- names
 
 # sex = male
-# age = 65+
+# age = 65+ and <65 on 1 January 2012
 # ICD10 codes = icd_rupture_codes
 # date_admission w/in dates _start & _end
 # Include other_condition_ 1-3
 inpatient <- inpatient |> 
+  mutate(age_at_2012 = year(as.period(interval(start = dob, 
+                                               end = dmy(01012012))))) |> 
   filter(sex == "1",
+         age_at_2012 <= 65,
          age >= 65,
          between(date_admission, date_start, date_end)) |> 
   filter(main_condition %in% icd_rupture_codes |
@@ -305,11 +292,11 @@ names(inpatient_simd)
 # Check for NAs
 table(inpatient_simd$hb2019name, useNA = "ifany") # 8 NAs
 check <- inpatient_simd[is.na(inpatient_simd$hb2019name),]
-table(check$postcode, useNA = "ifany") # 2 postcodes in England/Wales
+table(check$postcode, useNA = "ifany") # 1 postcode in England/Wales
 rm(check)
 
 
-# Keep only last entry for each UPI
+## Keep only last entry for each UPI
 length(unique(inpatient_simd$upi))
 
 # number of observations should match above
@@ -322,13 +309,12 @@ inpatient_simd <- inpatient_simd |>
 
 
 ## D: Surgical data ----
-# Pull in complete extract to identify individuals who died within 30 days of surgery 
+# Pull in complete extract to identify individuals in the AAA program 
 aaa_extract <- readRDS(extract_path) |> 
   select(financial_year, upi, dob, hbres, date_surgery, 
          hb_surgery, date_death, aneurysm_related) |> 
-  mutate(in_aaa_program = "Yes") |> 
-  # mutate(year = year(date_death)) |> 
-  filter(financial_year %in% c("2021/22", "2022/23"))
+  mutate(in_aaa_program = "Yes")
+
 
 table(aaa_extract$financial_year, useNA = "ifany")
 table(aaa_extract$date_surgery, useNA = "ifany")
@@ -346,16 +332,17 @@ inpatient_matched <- left_join(inpatient_simd, aaa_extract,
                                                 end = date_death))), .after = date_death) |>
   filter(days_to_death >= 30 | is.na(days_to_death))
 
-test <- inpatient_matched |> 
+inpatient_matched <- inpatient_matched |> 
   arrange(desc(condition), date_admission) |> 
   group_by(upi) |> 
   slice(n()) |> 
   ungroup() 
 
-test <- arrange(test, hb2019name, upi)
+inpatient_matched <- arrange(inpatient_matched, hb2019name, upi)
+
 
 # Select final columns for outputting to Excel
-test <- test |> 
+inpatient_matched <- inpatient_matched |> 
   mutate(hb2019name = if_else(!is.na(hb2019name), hb2019name, paste0("NHS ", hbres)),
          dob.x = if_else(!is.na(dob.x), dob.x, dob.y)) |> 
   select(hb2019name, upi, surname:postcode, dob.x, age:in_aaa_program, date_admission, 
@@ -373,6 +360,7 @@ table(inpatient_matched$hb2019name, useNA = "ifany")
 
 rm(inpatient, inpatient_simd)
 
+fife <- inpatient_matched[inpatient_matched$hb2019name == "NHS Fife",]
 
 ### 3: Deaths extract ----
 ## A: Call in extract ----
@@ -611,15 +599,28 @@ table(deaths_matched$hb2019name, useNA = "ifany")
 
 rm(deaths_simd)
 
+fife <- deaths_matched[deaths_matched$hb2019name == "NHS Fife",]
 
-# ### 4: Output to Excel ----
-# hb_names <- extract_simd |> 
-#   distinct(hb2019name) |> 
+
+### 4: Output to Excel ----
+## Create checking workbooks to send to NHS Fife & Tayside collective
+fife_tay <- c("NHS Fife", "NHS Tayside")
+
+for (hb_name in fife_tay) {
+  
+  write_report(inpatient_matched, deaths_matched, hb_name)
+  
+}
+
+
+# ## Create vector for workbooks to all HBs
+# hb_names <- simd |>
+#   distinct(hb2019name) |>
 #   pull()
 # 
 # for (hb_name in hb_names) {
-#   
-#   write_report(extract_simd, deaths_simd, hb_name)
-#   
+# 
+#   write_report(inpatient_matched, deaths_matched, hb_name)
+# 
 # }
 
