@@ -37,7 +37,7 @@
 
 # install.packages("odbc")
 # install.packages("dbplyr")
-# library(odbc)
+library(odbc)
 library(dplyr)
 library(lubridate)
 library(stringr)
@@ -53,16 +53,16 @@ gc()
 
 ### 1: Housekeeping ----
 ## Variables
-year = 2022
-date_start <- dmy("01012022") # 1 January
-date_end <- dmy("31122022") # 31 December
+year = 2023
+date_start <- dmy("01012023") # 1 January
+date_end <- dmy("31122023") # 31 December
 icd_rupture_codes <- c("I713", "I715", "I718") # inpatients
 icd_codes <- c("I713", "I714", "I715", "I716", "I718", "I719") # deaths
 
-extract <- 202309 # the September extract for the year following the year of focus
+extract <- 202409 # the September extract for the year following the year of focus
 
 ## Pathways
-wd_path <- paste0("/PHI_conf/AAA/Topics/Projects/20210929-Ruptured-AAAs-Audit")
+wd_path <- paste0("/PHI_conf/AAA/Topics/Vascular/Projects/Ruptured AAA Audit")
 
 simd_path <- paste0("/conf/linkage/output/lookups/Unicode/Deprivation",
                     "/postcode_2024_2_simd2020v2.rds")
@@ -146,41 +146,41 @@ write_report <- function(df1, df2, hb_name) {
   
   ### Save ----
   saveWorkbook(wb, paste0(wd_path, "/Output/Ruptured_AAA_audit_", hb_name, "_",
-                          Sys.Date(), ".xlsx"), overwrite = TRUE)
+                          year, ".xlsx"), overwrite = TRUE)
 }
 
 
 ### 2: SMR01 extract ----
 ## A: Call in extract ----
-# Create a connection to SMRA
-SMRA_connection <- odbc::dbConnect(
-  drv = odbc::odbc(),
-  dsn = "SMRA",
-  uid = rstudioapi::showPrompt(title = "Username", message = "Username:"),
-  pwd = rstudioapi::askForPassword("SMRA Password:")
-)
-
-smr01_query <- tbl(SMRA_connection, "SMR01_PI") %>%
-  colnames()
+# # Create a connection to SMRA
+# SMRA_connection <- odbc::dbConnect(
+#   drv = odbc::odbc(),
+#   dsn = "SMRA",
+#   uid = rstudioapi::showPrompt(title = "Username", message = "Username:"),
+#   pwd = rstudioapi::askForPassword("SMRA Password:")
+# )
+# 
+# smr01_query <- tbl(SMRA_connection, "SMR01_PI") %>%
+#   #colnames() 
 #   select(UPI_NUMBER, DERIVED_CHI, SURNAME, FIRST_FORENAME, POSTCODE, DOB, AGE_IN_YEARS,
 #          AGE_IN_MONTHS, SEX, ADMISSION_DATE, DISCHARGE_DATE, MAIN_CONDITION,
 #          OTHER_CONDITION_1, OTHER_CONDITION_2, OTHER_CONDITION_3, OTHER_CONDITION_4,
 #          OTHER_CONDITION_5, ADMISSION, DISCHARGE) %>%
-#   filter(ADMISSION_DATE >= To_date('2022-01-01', 'YYYY-MM-DD'))
+#   filter(ADMISSION_DATE >= To_date('2023-01-01', 'YYYY-MM-DD'))
 # 
-#
+# 
 # #smr01_query %>% show_query()
 # 
 # inpatient <- collect(smr01_query)
 # 
 # ## Add in an output for the extract so don't have to connect to SMRA every time
-# saveRDS(inpatient, paste0(wd_path, "/Temp/SMR01_extract.rds"))
+# saveRDS(inpatient, paste0(wd_path, "/Temp/SMR01_extract_", year, ".rds"))
 # 
 # rm(smr01_query)
 
 
 ## B: Refine extract ----
-inpatient <- readRDS(paste0(wd_path, "/Temp/SMR01_extract.rds")) |> 
+inpatient <- readRDS(paste0(wd_path, "/Temp/SMR01_extract_", year, ".rds")) |> 
   select(-DERIVED_CHI, -AGE_IN_MONTHS, -ADMISSION, -DISCHARGE,
          -OTHER_CONDITION_4, -OTHER_CONDITION_5)
 names(inpatient)
@@ -264,9 +264,9 @@ inpatient_simd <- left_join(inpatient, simd,
 names(inpatient_simd)
 
 # Check for NAs
-table(inpatient_simd$hb2019name, useNA = "ifany") # 8 NAs
+table(inpatient_simd$hb2019name, useNA = "ifany") # 1 NAs
 check <- inpatient_simd[is.na(inpatient_simd$hb2019name),]
-table(check$postcode, useNA = "ifany") # 1 postcode in England
+table(check$postcode, useNA = "ifany") # postcode doesn't exist, but most likely in England
 rm(check)
 
 
@@ -343,14 +343,14 @@ rm(inpatient, inpatient_simd)
 
 ### 3: Deaths extract ----
 ## A: Call in extract ----
-# Create a connection to SMRA
+# # Create a connection to SMRA
 # SMRA_connection <- odbc::dbConnect(
 #   drv = odbc::odbc(),
 #   dsn = "SMRA",
 #   uid = rstudioapi::showPrompt(title = "Username", message = "Username:"),
 #   pwd = rstudioapi::askForPassword("SMRA Password:")
 # )
-
+# 
 # deaths_query <- tbl(SMRA_connection,
 #     dbplyr::in_schema("ANALYSIS", "GRO_DEATHS_C")) %>%
 #   #names()
@@ -374,13 +374,13 @@ rm(inpatient, inpatient_simd)
 # deaths <- collect(deaths_query)
 # 
 # ## Add in an output for the extract so don't have to connect to SMRA every time
-# saveRDS(deaths, paste0(wd_path, "/Temp/deaths_extract.rds"))
+# saveRDS(deaths, paste0(wd_path, "/Temp/deaths_extract_", year, ".rds"))
 # 
 # rm(SMRA_connection, deaths_query)
 
 
 ## B: Refine extract ----
-deaths <- readRDS(paste0(wd_path, "/Temp/deaths_extract.rds")) |> 
+deaths <- readRDS(paste0(wd_path, "/Temp/deaths_extract_", year, ".rds")) |> 
   select(-CHI)
 names(deaths)
 
@@ -431,9 +431,9 @@ table(deaths$cause_death_3)
 table(deaths$cause_death_4)
 table(deaths$cause_death_5)
 table(deaths$cause_death_6)
-table(deaths$cause_death_7) 
+table(deaths$cause_death_7) # no ruptured AAA codes 
 table(deaths$cause_death_8) # no ruptured AAA codes
-table(deaths$cause_death_9) # no ruptured AAA codes
+table(deaths$cause_death_9)
 
 
 ## Add column that identifies if cause of death is underlying or other
@@ -524,6 +524,12 @@ deaths_simd <- left_join(deaths, simd,
 names(deaths_simd)
 
 # Check for NAs
+table(deaths_simd$hb2019name, useNA = "ifany") # 2 NAs
+check <- deaths_simd[is.na(deaths_simd$hb2019name),]
+table(check$postcode, useNA = "ifany") # no postcodes
+rm(check)
+
+# Check for NAs
 table(deaths_simd$hb2019name, useNA = "ifany") 
 
 # Check no duplicate UPIs
@@ -539,10 +545,10 @@ aaa_extract <- readRDS(extract_path) |>
   select(financial_year, upi, dob, postcode, hbres, date_surgery, 
          hb_surgery, date_death, aneurysm_related) |> 
   mutate(in_aaa_program = "Yes") |> 
-  filter(financial_year %in% c("2021/22", "2022/23")) |> 
+  filter(financial_year %in% c("2022/23", "2023/24")) |> # update so that full year of investigation is covered
   # filter out anyone who died in a different year, but keep NAs
   mutate(year = year(date_death)) |> 
-  filter(year %in% c(NA, 2022))
+  filter(year %in% c(NA, 2023)) # update year to current investigation year (variable year not working??)
 
 # Ensure correct postcode format is used 
 aaa_extract <- aaa_extract |> 
@@ -636,4 +642,145 @@ for (hb_name in fife_tay) {
 #   write_report(inpatient_matched, deaths_matched, hb_name)
 # 
 # }
+
+
+### 6: Find cases ----
+aaa_extract <- readRDS(extract_path)
+
+pick_1 <- aaa_extract[aaa_extract$upi == "",]
+pick_2 <- aaa_extract[aaa_extract$upi == "",]
+
+surname <- c("", "")
+
+review <- rbind(pick_1, pick_2) |> 
+  mutate(surname = surname,
+         .after = upi) |> 
+  select(-financial_quarter, -chi, -eligibility_period, 
+         -age65_onstartdate, -over65_onstartdate, -dob_eligibility, 
+         -ca2019, -simd2020v2_hb2019_quintile, -first_outcome)
+
+names(review)
+
+# Update variable responses
+review <- review |> 
+  mutate(pat_elig = case_when(pat_elig=="01" ~ "Eligible, in cohort",
+                              pat_elig=="02" ~ "Eligible, under previous surveillance in NHS Highland/Western Isles prior to national screening programme ",
+                              pat_elig=="03" ~ "Eligible, self-referral"),
+         screen_type = case_when(screen_type=="01" ~ "Initial",
+                                 screen_type=="02" ~ "Surveillance",
+                                 screen_type=="03" ~ "QA initial",
+                                 screen_type=="04" ~ "QA surveillance"),
+         att_dna = case_when(att_dna=="01" ~ "Non-responder/DNA, initial",
+                             att_dna=="02" ~ "Non-responder/DNA, surveillance",
+                             att_dna=="03" ~ "Appointment cancelled, patient",
+                             att_dna=="04" ~ "Appointment cancelled/postponed, healthcare",
+                             att_dna=="05" ~ "Attended and seen"),
+         screen_result = case_when(
+           screen_result=="01" ~ "Positive (AAA >= 3.0cm)",
+           screen_result=="02" ~ "Negative (AAA < 3.0cm)",
+           screen_result=="03" ~ "Technical failure",
+           screen_result=="04" ~ "Non-visualization, longitudinal/transverse plane",
+           screen_result=="05" ~ "External positive (AAA >= 3.0cm)",
+           screen_result=="06" ~ "External negative (AAA < 3.0cm)"),
+         screen_exep = case_when(
+           screen_result=="01" ~ "Declined screening during attendance",
+           screen_result=="02" ~ "Aorta non-visualised, technical failure",
+           screen_result=="03" ~ "Aorta non-visualised, physical barrier",
+           screen_result=="04" ~ "Clinically unsuitable for portable screening",
+           screen_result=="05" ~ "Incomplete measurements",
+           screen_result=="06" ~ "Too many measurements"),
+         followup_recom = case_when(
+           followup_recom=="01" ~ "3 months",
+           followup_recom=="02" ~ "12 months",
+           followup_recom=="03" ~ "Discharge",
+           followup_recom=="04" ~ "Refer to vascular",
+           followup_recom=="05" ~ "Immediate recall",
+           followup_recom=="06" ~ "No further recall"),
+         result_outcome = case_when(
+           result_outcome=="01" ~ "Declined vascular referral",
+           result_outcome=="02" ~ "Referred in error: Vascular appointment not required",
+           result_outcome=="03" ~ "DNA outpatien service: Self-discharge",
+           result_outcome=="04" ~ "DNA outpatien service: Died w/in 10 working days of referral",
+           result_outcome=="05" ~ "DNA outpatien service: Died more than 10 working days of referral",
+           result_outcome=="06" ~ "Referred in error: As determined by vascular services",
+           result_outcome=="07" ~ "Died before surgical assessment completed",
+           result_outcome=="08" ~ "Unfit for surgery",
+           result_outcome=="09" ~ "Refer to another specialty",
+           result_outcome=="10" ~ "Awaiting further AAA growth",
+           result_outcome=="11" ~ "Appropriate for surgery: Patient declined surgery",
+           result_outcome=="12" ~ "Appropriate for surgery: Died before treatment",
+           result_outcome=="13" ~ "Appropriate for surgery: Self-discharge",
+           result_outcome=="14" ~ "Appropriate for surgery: Patient deferred surgery",
+           result_outcome=="15" ~ "Appropriate for surgery: AAA repaired and survived 30 days",
+           result_outcome=="16" ~ "Appropriate for surgery: Died w/in 30 days of treatment",
+           result_outcome=="17" ~ "Appropriate for surgery: Final outcome pending",
+           result_outcome=="18" ~ "Ongoing assessment by vascular",
+           result_outcome=="19" ~ "Final outcome pending",
+           result_outcome=="20" ~ "Other final outcome"),
+         referral_error_manage = case_when(
+           referral_error_manage=="01" ~ "Discharged",
+           referral_error_manage=="02" ~ "Surveillance 3 months",
+           referral_error_manage=="03" ~ "Surveillance 12 months"),
+         hb_surgery = case_when(hb_surgery=="A" ~ "Ayrshire & Arran",
+                                hb_surgery=="B" ~ "Borders",
+                                hb_surgery=="F" ~ "Fife",
+                                hb_surgery=="G" ~ "Greater Glasgow & Clyde",
+                                hb_surgery=="H" ~ "Highland",
+                                hb_surgery=="L" ~ "Lanarkshire",
+                                hb_surgery=="N" ~ "Grampian",
+                                hb_surgery=="R" ~ "Orkney",
+                                hb_surgery=="S" ~ "Lothian",
+                                hb_surgery=="T" ~ "Tayside",
+                                hb_surgery=="V" ~ "Forth Valley",
+                                hb_surgery=="W" ~ "Western Isles",
+                                hb_surgery=="Y" ~ "Dumfries & Galloway",
+                                hb_surgery=="Z" ~ "Shetland",
+                                hb_surgery=="D" ~ "Cumbria"),
+         surg_method = case_when(
+           surg_method=="01" ~ "Endovascular surgery",
+           surg_method=="02" ~ "Open surgery",
+           surg_method=="03" ~ "Proceedure abandoned"),
+         audit_flag = case_when(audit_flag=="01" ~ "Yes",
+                                audit_flag=="02" ~ "No"),
+         audit_result = case_when(audit_result=="01" ~ "Standard met",
+                                  audit_result=="02" ~ "Standard not met"))
+
+# Rename variables
+names <- c("financial year", "quarter", "upi", "surname", "dob", "sex", "postcode",
+           "practice code", "practice name", "eligibility", "HB of residence", 
+           "HB of screen", "SIMD", "location code", "screen type", 
+           "date offer sent", "date screened", "age at screening", "attendance", 
+           "screening result", "screen exceptions", "follow-up recommendation", 
+           "APL measurement", "APT measurement", "largest measurement", 
+           "AAA size", "AAA size group", "date result", "result verified", 
+           "date verified", "date referral generated", "date referral actual", 
+           "date seen outpatient", "referral outcome", "referred in error management", 
+           "date surgery", "financial year surgery", "HB of surgery", "surgical methiod", 
+           "date death", "aneurysm related", "flagged for audit", "audit result", 
+           "audit fail reason", "audit fail detail 1", "audit fail detail 2", 
+           "audit fail detail 3", "audit fail detail 4", "audit fail detail 5", 
+           "audit outcome", "audit batch fail", "audit batch outcome")
+
+names(review) <- names
+
+
+# Write out
+write.xlsx(review, paste0(wd_path, 
+                          "/Output/2022 data/Fife_and_Tayside_review_2022.xlsx"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
