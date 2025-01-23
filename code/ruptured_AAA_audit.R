@@ -360,7 +360,7 @@ rm(inpatient, inpatient_simd)
 #          CAUSE_OF_DEATH_CODE_3, CAUSE_OF_DEATH_CODE_4, CAUSE_OF_DEATH_CODE_5,
 #          CAUSE_OF_DEATH_CODE_6, CAUSE_OF_DEATH_CODE_7, CAUSE_OF_DEATH_CODE_8,
 #          CAUSE_OF_DEATH_CODE_9) %>%
-#   filter(DATE_OF_DEATH >= To_date("2022-01-01", "YYYY-MM-DD"))
+#   filter(DATE_OF_DEATH >= To_date("2023-01-01", "YYYY-MM-DD"))
 # 
 # # Use colnames to check variable names
 # colnames(tbl(
