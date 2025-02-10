@@ -53,13 +53,13 @@ gc()
 
 ### 1: Housekeeping ----
 ## Variables
-year = 2023
-date_start <- dmy("01012023") # 1 January
-date_end <- dmy("31122023") # 31 December
+year = 2021
+date_start <- dmy("01012021") # 1 January
+date_end <- dmy("31122021") # 31 December
 icd_rupture_codes <- c("I713", "I715", "I718") # inpatients
 icd_codes <- c("I713", "I714", "I715", "I716", "I718", "I719") # deaths
 
-extract <- 202409 # the September extract for the year following the year of focus
+extract <- 202209 # the September extract for the year following the year of focus
 
 ## Pathways
 wd_path <- paste0("/PHI_conf/AAA/Topics/Vascular/Projects/Ruptured AAA Audit")
@@ -145,7 +145,7 @@ write_report <- function(df1, df2, hb_name) {
   
   
   ### Save ----
-  saveWorkbook(wb, paste0(wd_path, "/Output/Ruptured_AAA_audit_", hb_name, "_",
+  saveWorkbook(wb, paste0(wd_path, "/Output/2021 data/Ruptured_AAA_audit_", hb_name, "_",
                           year, ".xlsx"), overwrite = TRUE)
 }
 
@@ -161,12 +161,14 @@ write_report <- function(df1, df2, hb_name) {
 # )
 # 
 # smr01_query <- tbl(SMRA_connection, "SMR01_PI") %>%
-#   #colnames() 
+#   #colnames()
 #   select(UPI_NUMBER, DERIVED_CHI, SURNAME, FIRST_FORENAME, POSTCODE, DOB, AGE_IN_YEARS,
 #          AGE_IN_MONTHS, SEX, ADMISSION_DATE, DISCHARGE_DATE, MAIN_CONDITION,
 #          OTHER_CONDITION_1, OTHER_CONDITION_2, OTHER_CONDITION_3, OTHER_CONDITION_4,
-#          OTHER_CONDITION_5, ADMISSION, DISCHARGE) %>%
-#   filter(ADMISSION_DATE >= To_date('2023-01-01', 'YYYY-MM-DD'))
+#          OTHER_CONDITION_5, ADMISSION, DISCHARGE, LINK_NO, URI) %>%
+#   filter(ADMISSION_DATE >= To_date('2021-01-01', 'YYYY-MM-DD')) %>%
+#   arrange(LINK_NO, ADMISSION_DATE, DISCHARGE_DATE, ADMISSION, DISCHARGE, URI) %>%
+#   select(-LINK_NO, -URI)
 # 
 # 
 # #smr01_query %>% show_query()
@@ -300,7 +302,7 @@ table(aaa_extract$date_surgery, useNA = "ifany")
 table(aaa_extract$date_death, useNA = "ifany")
 
 
-# Check if individuals had surgery or death (death needs to be >30 surgery)
+# Check if individuals had surgery or death (death needs to be >30 days from surgery)
 # Also check that dob and HB match
 inpatient_matched <- left_join(inpatient_simd, aaa_extract,
                                by = "upi") |> 
@@ -338,6 +340,7 @@ inpatient_matched <- inpatient_matched |>
 
 table(inpatient_matched$hb2019name, useNA = "ifany")
 
+saveRDS(inpatient_matched, paste0(wd_path, "/Temp/inpatient_matched_", year, ".rds"))
 rm(inpatient, inpatient_simd)
 
 
@@ -360,7 +363,7 @@ rm(inpatient, inpatient_simd)
 #          CAUSE_OF_DEATH_CODE_3, CAUSE_OF_DEATH_CODE_4, CAUSE_OF_DEATH_CODE_5,
 #          CAUSE_OF_DEATH_CODE_6, CAUSE_OF_DEATH_CODE_7, CAUSE_OF_DEATH_CODE_8,
 #          CAUSE_OF_DEATH_CODE_9) %>%
-#   filter(DATE_OF_DEATH >= To_date("2023-01-01", "YYYY-MM-DD"))
+#   filter(DATE_OF_DEATH >= To_date("2021-01-01", "YYYY-MM-DD"))
 # 
 # # Use colnames to check variable names
 # colnames(tbl(
@@ -422,6 +425,8 @@ deaths <- deaths |>
 
 table(deaths$age_at_2012, useNA = "ifany")
 table(deaths$age, useNA = "ifany")  
+
+range(deaths$date_death)  
 
 table(deaths$underlying_cause_death)
 table(deaths$cause_death_0)
@@ -545,10 +550,10 @@ aaa_extract <- readRDS(extract_path) |>
   select(financial_year, upi, dob, postcode, hbres, date_surgery, 
          hb_surgery, date_death, aneurysm_related) |> 
   mutate(in_aaa_program = "Yes") |> 
-  filter(financial_year %in% c("2022/23", "2023/24")) |> # update so that full year of investigation is covered
+  filter(financial_year %in% c("2020/21", "2021/22")) |> # update so that full year of investigation is covered
   # filter out anyone who died in a different year, but keep NAs
   mutate(year = year(date_death)) |> 
-  filter(year %in% c(NA, 2023)) # update year to current investigation year (variable year not working??)
+  filter(year %in% c(NA, 2021)) # update year to current investigation year (variable year not working??)
 
 # Ensure correct postcode format is used 
 aaa_extract <- aaa_extract |> 
@@ -571,6 +576,11 @@ deaths_matched <- full_join(deaths_simd, aaa_extract,
 # Create age at death variable
 # Select final columns for outputting to Excel
 deaths_matched <- deaths_matched |> 
+  # remove ampersand from aaa_extract HB names
+  mutate(hbres = case_when(hbres == "Ayrshire & Arran" ~ "Ayrshire and Arran",
+                           hbres == "Dumfries & Galloway" ~ "Dumfries and Galloway",
+                           hbres == "Greater Glasgow & Clyde" ~ "Greater Glasgow and Clyde",
+                           TRUE ~ hbres)) |> 
   # where NRS data is NA, fill with AAA extract information
   mutate(hb2019name = if_else(!is.na(hb2019name), hb2019name, paste0("NHS ", hbres)),
          dob.x = if_else(!is.na(dob.x), dob.x, dob.y),
@@ -602,6 +612,7 @@ deaths_matched <- arrange(deaths_matched, hb2019name, upi)
 
 table(deaths_matched$hb2019name, useNA = "ifany")
 
+saveRDS(deaths_matched, paste0(wd_path, "/Temp/deaths_matched_", year, ".rds"))
 rm(deaths_simd, simd, aaa_extract)
 
 
@@ -624,12 +635,15 @@ deaths_matched <- left_join(deaths_matched, duplicates) |>
 ### 5: Output to Excel ----
 ## Create checking workbooks to send to NHS Fife & Tayside collective
 fife_tay <- c("NHS Fife", "NHS Tayside")
+gram_os <- c("NHS Grampian", "NHS Orkney", "NHS Shetland")
 
 for (hb_name in fife_tay) {
   
   write_report(inpatient_matched, deaths_matched, hb_name)
   
 }
+
+write_report(inpatient_matched, deaths_matched, "NHS Grampian")
 
 
 # ## Create vector for workbooks to all HBs
@@ -642,6 +656,7 @@ for (hb_name in fife_tay) {
 #   write_report(inpatient_matched, deaths_matched, hb_name)
 # 
 # }
+
 
 
 ### 6: Find cases ----
@@ -767,20 +782,4 @@ names(review) <- names
 # Write out
 write.xlsx(review, paste0(wd_path, 
                           "/Output/2022 data/Fife_and_Tayside_review_2022.xlsx"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
