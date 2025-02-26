@@ -20,14 +20,14 @@
 # 
 # Mortality Data
 # National Records of Scotland (NRS) death records will be searched for any males 
-# who have presented with an abdominal aortic aneurysm, with or without rupture 
-# (ICD10 codes I71.3, I71.4, I71.5, I71.6, I71.8, and I71.9). Individuals aged 
-# older than 65 on 1 January 2012 are to be excluded as they would not have been
-# part of the AAA screening programme. The remaining records are then matched to 
-# patient AAA records to identify date of vascular surgery in order to identify
-# if the individual died within 30 days of their surgery. *Date of death is taken 
-# from the NRS death records and is supplemented by the AAA extract, where needed
-# and possible.
+# who have an abdominal aortic aneurysm, with or without rupture 
+# (ICD10 codes I71.3, I71.4, I71.5, I71.6, I71.8, and I71.9), listed in any position
+# on their death certificate. Individuals aged older than 65 on 1 January 2012 
+# are to be excluded as they would not have been part of the AAA screening 
+# programme. The remaining records are then matched to patient AAA records to 
+# identify date of vascular surgery in order to identify if the individual died 
+# within 30 days of their surgery. *Date of death is taken from the NRS death 
+# records and is supplemented by the AAA extract, where needed and possible.
 # 
 # CHI number will be used to link all datasets, keeping only one record per 
 # patient. In order to help screening units review data, the search will be 
@@ -660,6 +660,9 @@ write_report(inpatient_matched, deaths_matched, "NHS Grampian")
 
 
 ### 6: Find cases ----
+## This section can be used to pull records for individuals that need
+## further investigation within the AAA extract
+
 aaa_extract <- readRDS(extract_path)
 
 pick_1 <- aaa_extract[aaa_extract$upi == "",]
